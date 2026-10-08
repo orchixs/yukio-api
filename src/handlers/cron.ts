@@ -30,13 +30,14 @@ const REFILL_THRESHOLD = 100;
 const DEFAULT_MAX_EPISODES = 100;
 const DEFAULT_MAX_CHARACTERS = 100;
 
-/* ============================================================
-   REFILL — fetch dari AniList, insert ke queue
-   ============================================================ */
-
 async function refillQueue(env: Env): Promise<number> {
   const nextPageStr = await getMeta(env, 'next_page');
-  let nextPage = parseInt(nextPageStr ?? '1', 10);
+  const startPage = parseInt(env.START_PAGE ?? '1', 10);
+  const step = parseInt(env.PAGE_STEP ?? '1', 10);
+  const nextPage = parseInt(
+    (await getMeta(env, 'next_page')) ?? String(startPage),
+    10
+  );
 
   const sortKey = env.ANILIST_SORT || 'popular';
 
@@ -65,7 +66,7 @@ async function refillQueue(env: Env): Promise<number> {
   nextPage++;
 
   await Promise.all([
-    setMeta(env, 'next_page', String(nextPage)),
+    await setMeta(env, 'next_page', String(nextPage + step));
     setMeta(
       env,
       'total_fetched',
@@ -81,10 +82,6 @@ async function getMetaTotal(env: Env): Promise<number> {
   const v = await getMeta(env, 'total_fetched');
   return parseInt(v ?? '0', 10);
 }
-
-/* ============================================================
-   SCRAPE ONE — fetch detail, build, push
-   ============================================================ */
 
 interface ScrapeResult {
   ok: boolean;
@@ -221,10 +218,6 @@ function stripHtml(s: string): string {
     .trim();
 }
 
-/* ============================================================
-   MERGE ACTOR FILES
-   ============================================================ */
-
 async function mergeActorFiles(
   env: Env,
   incoming: UnifiedVoiceActor[]
@@ -293,10 +286,6 @@ async function mergeActorFiles(
   return { ok: true, files: filesToCommit.length };
 }
 
-/* ============================================================
-   MAIN RUN
-   ============================================================ */
-
 export interface CronRunResult {
   refilled: number;
   processed: number;
@@ -327,8 +316,7 @@ export async function runScrapeCron(env: Env): Promise<CronRunResult> {
     nextPage: 1,
     errors: [],
   };
-
-  /* ── 1. Refill kalau queue < threshold ────────── */
+  
   try {
     const pending = await getQueuePendingCount(env);
     if (pending < REFILL_THRESHOLD) {
@@ -341,7 +329,6 @@ export async function runScrapeCron(env: Env): Promise<CronRunResult> {
     result.errors.push(`refill: ${msg}`);
   }
 
-  /* ── 2. Ambil 1 item ──────────────────────────── */
   const item = await nextQueueItem(env);
 
   if (!item) {
@@ -361,7 +348,6 @@ export async function runScrapeCron(env: Env): Promise<CronRunResult> {
 
   log(`processing [${item.id}] ${item.slug}`);
 
-  /* ── 3. Scrape ────────────────────────────────── */
   let scrapeResult: ScrapeResult;
 
   try {
@@ -383,7 +369,6 @@ export async function runScrapeCron(env: Env): Promise<CronRunResult> {
 
   result.processed = 1;
 
-  /* ── 4. Sukses → DELETE dari queue ────────────── */
   if (scrapeResult.ok) {
     await deleteQueueItem(env, item.id);
     result.succeeded = 1;
@@ -403,8 +388,7 @@ export async function runScrapeCron(env: Env): Promise<CronRunResult> {
     result.errors.push(`${item.slug}: ${scrapeResult.error}`);
     log(`✗ ${item.slug} — ${scrapeResult.error}`);
   }
-
-  /* ── 5. Stats akhir ───────────────────────────── */
+  
   const stats = await getQueueStats(env);
   result.queuePending = stats.pending;
   result.queueTotal = stats.total;
