@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "yukio-ratings-db"
-database_id = "84b22e1e-29ae-437c-b7ec-63337c7387d1"
+database_id = "ce7d02c0-431c-40b7-8771-3397fd6278ea"
 
 [ai]
 binding = "AI"
